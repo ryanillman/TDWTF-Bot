@@ -55,7 +55,8 @@ class WhatBot(object):
 
         if (
             self._config.getboolean('Features', 'SignatureGuy') or
-            self._config.getboolean('Features', 'TransferPost')
+            self._config.getboolean('Features', 'TransferPost') or
+            self._config.getboolean('Features', 'RichardNixon')
         ):
             self._bus_register("/notification/%d" % my_uid, self._notif_mentioned)
             self._handle_notifications()
@@ -176,6 +177,8 @@ class WhatBot(object):
                 self._handle_mention_sigguy(mention)
             if self._config.getboolean('Features', 'TransferPost'):
                 self._handle_mention_transfer(mention)
+	    if self._config.getboolean('Features', 'RichardNixon'):
+                self._handle_mention_nixon(mention)
 
     def _handle_mention_sigguy(self, mention):
         print u"Replying to %s in topic %d, post %d" % (mention.username,
