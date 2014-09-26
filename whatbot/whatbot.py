@@ -10,7 +10,7 @@ import re
 import ConfigParser
 import sys
 
-REPLY_TO_PMS = False # If True, reply to private messages instead of mentions
+REPLY_TO_PMS = True # If True, reply to private messages instead of mentions
 
 BASE_URL = "http://what.thedailywtf.com"
 
@@ -177,7 +177,7 @@ class WhatBot(object):
                 self._handle_mention_sigguy(mention)
             if self._config.getboolean('Features', 'TransferPost'):
                 self._handle_mention_transfer(mention)
-	    if self._config.getboolean('Features', 'RichardNixon'):
+            if self._config.getboolean('Features', 'RichardNixon'):
                 self._handle_mention_nixon(mention)
 
     def _handle_mention_sigguy(self, mention):
@@ -188,7 +188,7 @@ class WhatBot(object):
         self._mark_as_read(mention.topic_id, mention.post_number)
 
         print u"Sending reply…"
-        message = self._config.get('Params', 'Message') % mention.username + (u"&nbsp;" *
+        message = (self._config.get('Params', 'Message') % mention.username) + (u"&nbsp;" *
             self._nbsp_count)
         self._nbsp_count = (self._nbsp_count + 1) % 50
 
@@ -208,6 +208,48 @@ class WhatBot(object):
         self._mark_as_read(mention.topic_id, mention.post_number)
         print u"Complete."
         sleep(1)
+
+
+    def _handle_mention_nixon(self, mention):
+        print u"Replying to %s in topic %d, post %d" % (mention.username,
+            mention.topic_id, mention.post_number)
+
+        post = self._get_post(mention.topic_id, mention.post_number )
+        print post.keys()
+
+        post=post['cooked']
+
+        message = ""
+        keywords = self._config.get('Params', 'Keywords').split(' ')
+        for keyword in keywords:
+            if keyword in post.lower():
+                message = self._config.get('SigGuy', keyword)
+
+        if message == "":
+            message = self._config.get('SigGuy', 'default')
+
+        message = message % mention.username
+
+        #make up some fake tags
+        message = message + "<hr>"
+
+        maxsig = int(self._config.get('Tags', 'count'))
+        selsig = str(random.randint(0, maxsig-1))
+
+        print "max sig line {}, selected {}".format(maxsig, selsig)
+
+        sigmessage = self._config.get('Tags', str(random.randint(0, maxsig)))
+        message = message + u"<small>Filed Under: [{0}](#tag{1})</small>".format(sigmessage, mention.post_number)
+
+
+        print u"Marking as read…"
+        self._mark_as_read(mention.topic_id, mention.post_number)
+
+        print u"Sending reply…"
+        self._reply_to(mention.topic_id, mention.post_number, message)
+
+        print u"AROOOOO!"
+        sleep(2)
 
     def _init_liking(self, topic):
         topic_data = self._get("/t/%d/last.json" % topic)
@@ -260,6 +302,12 @@ class WhatBot(object):
         }
 
         self._post("/topics/timings", **kwargs)
+
+
+    def _get_post(self, topic, post):
+        posts = (self._get("/t/{}/{}.json".format(topic, post)))
+        print max(posts['post_stream']['posts'])
+        return posts['post_stream']['posts'][post - 1]
 
 
     def _get_mentions(self):
