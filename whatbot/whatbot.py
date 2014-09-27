@@ -120,13 +120,16 @@ class WhatBot(object):
         pass
 
     def _notif_mentioned(self, message):
-        if REPLY_TO_PMS:
-            count = message[u'unread_private_messages']
-        else:
-            count = message[u'unread_notifications']
 
-        if count > 0:
+        pmcount = message[u'unread_private_messages']
+
+        noticecount = message[u'unread_notifications']
+
+        if noticecount > 0:
             self._handle_notifications()
+
+        if pmcount > 0:
+            self._handle_pms()
 
     def _notif_likes_topic(self, message):
         type = message[u'type']
@@ -171,7 +174,8 @@ class WhatBot(object):
                         break
 
     def _handle_notifications(self):
-        for mention in self._get_mentions():
+        #global forum mentions
+        for mention in self._get_mentions(1):
             pprint(mention)
             if self._config.getboolean('Features', 'SignatureGuy'):
                 self._handle_mention_sigguy(mention)
@@ -179,6 +183,15 @@ class WhatBot(object):
                 self._handle_mention_transfer(mention)
             if self._config.getboolean('Features', 'RichardNixon'):
                 self._handle_mention_nixon(mention)
+
+
+    def _handle_pms(self):
+        for mention in self._get_mentions(6):
+            pprint(mention)
+            if self._config.getboolean('Features', 'RichardNixon'):
+                self._handle_pm(mention)
+
+
 
     def _handle_mention_sigguy(self, mention):
         print u"Replying to %s in topic %d, post %d" % (mention.username,
@@ -214,10 +227,12 @@ class WhatBot(object):
         print u"Replying to %s in topic %d, post %d" % (mention.username,
             mention.topic_id, mention.post_number)
 
-        post = self._get_post(mention.topic_id, mention.post_number )
-        print post.keys()
-
-        post=post['cooked']
+        try:
+            post = self._get_post(mention.topic_id, mention.post_number )
+            print post.keys()
+            post=post['cooked']
+        except:
+            post = ""
 
         message = ""
         keywords = self._config.get('Params', 'Keywords').split(' ')
@@ -240,7 +255,8 @@ class WhatBot(object):
 
         sigmessage = self._config.get('Tags', str(random.randint(0, maxsig)))
         message = message + u"<small>Filed Under: [{0}](#tag{1})</small>".format(sigmessage, mention.post_number)
-
+        
+        message = message + u"<!-- t{}p{} -->".format(mention.topic_id, mention.post_number)
 
         print u"Marking as read…"
         self._mark_as_read(mention.topic_id, mention.post_number)
@@ -248,7 +264,54 @@ class WhatBot(object):
         print u"Sending reply…"
         self._reply_to(mention.topic_id, mention.post_number, message)
 
-        print u"AROOOOO!"
+        print u"ARROOOOO!"
+        sleep(2)
+
+    def _handle_pm(self, mention):
+        print u"Processing COMMAND from %s in topic %d, post %d" % (mention.username,
+            mention.topic_id, mention.post_number)
+
+        master = self._config.get('WhatBot', 'Master')
+        message = ""
+
+        if mention.username == master:
+            try:
+                post = self._get_post(mention.topic_id, mention.post_number )
+                post=post['cooked']
+            except:
+                post = ""
+
+            post = re.sub('<[^<]+?>', '', post)
+            #command posts come in the form <command> <topic>/<post_number>
+            command = post.split(' ')
+            target = command[1].split('/')
+
+            if 'like' == command[0]:
+                self._like_post_by_number(target[0], target[1])
+            elif 'plusone' == command[0]:
+                m = "I like your style. Here's a Tricky Dick Fun Buck: :dollar:"
+                self._reply_to(target[0], target[1], m)
+            else:
+                message = u"I'm sorry, master, I don't know what to do with {}.<!-- t{}p{} -->"\
+                    .format(command[0], mention.topic_id, mention.post_number)
+
+
+        else:
+            print u"command not from our master. ignoring"
+            message = u"ARROOOO! I don't have to listen to communists like you! <!-- t{}p{} -->"\
+                .format(mention.topic_id, mention.post_number)
+
+
+
+        print u"Marking as read…"
+        self._mark_as_read(mention.topic_id, mention.post_number)
+
+        if "" != message:
+            print u"Sending reply…"
+            self._reply_to(mention.topic_id, mention.post_number, message)
+        else:
+            print u"No message"
+
         sleep(2)
 
     def _init_liking(self, topic):
@@ -267,6 +330,12 @@ class WhatBot(object):
             if action[u'id'] == 2:
                 return action
         return None
+
+    def _like_post_by_number(self, topic_id, post_number):
+        post = self._get_post(int(topic_id), int(post_number))
+        print(post['id'])
+        self._like_post(int(post['id']))
+
 
     def _like_post(self, post_id):
         print("Liking post %d" % post_id)
@@ -303,16 +372,13 @@ class WhatBot(object):
 
         self._post("/topics/timings", **kwargs)
 
-
     def _get_post(self, topic, post):
         posts = (self._get("/t/{}/{}.json".format(topic, post)))
-        print max(posts['post_stream']['posts'])
+        print post - 1
+        print posts['post_stream']['posts'][post - 1]
         return posts['post_stream']['posts'][post - 1]
 
-
-    def _get_mentions(self):
-        watched_type = 6 if REPLY_TO_PMS else 1
-
+    def _get_mentions(self, watched_type = 1):
         for notification in self._get("/notifications", _=int(time() * 1000)):
             if (notification[u'notification_type'] == watched_type and
                 notification[u'read'] == False):
